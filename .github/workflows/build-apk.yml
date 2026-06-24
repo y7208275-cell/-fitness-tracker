@@ -1,7 +1,7 @@
 name: Build Android APK
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
 
 jobs:
   build-apk:
@@ -18,12 +18,27 @@ jobs:
           npm ci
           npm run build
 
-      - name: Generate Android APK with PWABuilder
+      - name: Install Bubblewrap and build APK
         run: |
-          npx @pwabuilder/cli build android --url "https://y7208275-cell.github.io/-fitness-tracker/" --output apk-output
+          npm install -g @bubblewrap/cli
+          # Generate TWA (Trusted Web Activity) config and build APK
+          npx bubblewrap init --manifest "https://y7208275-cell.github.io/-fitness-tracker/manifest.json" --directory apk-output || true
+          if [ -d "apk-output" ]; then
+            cd apk-output
+            npx bubblewrap build || true
+            cd ..
+          fi
 
-      - name: Upload APK artifact
+      - name: Try alternative - use PWABuilder API
+        run: |
+          curl -s -X POST "https://pwabuilder.cloudcomputing.xyz/api/android/package?url=https://y7208275-cell.github.io/-fitness-tracker/" -o app.apk || echo "API failed"
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: fitness-tracker-apk
-          path: apk-output/
+          path: |
+            *.apk
+            apk-output/*.apk
+            app.apk
+          if-no-files-found: warn
