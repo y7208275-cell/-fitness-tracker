@@ -1,0 +1,29 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build web app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Generate Android APK with PWABuilder
+        run: |
+          npx @pwabuilder/cli build android --url "https://y7208275-cell.github.io/-fitness-tracker/" --output apk-output
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitness-tracker-apk
+          path: apk-output/
