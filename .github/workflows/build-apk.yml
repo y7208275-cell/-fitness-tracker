@@ -7,38 +7,52 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Build web app
+      - name: Install Java and Android SDK
         run: |
-          npm ci
-          npm run build
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openjdk-17-jdk wget unzip
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
 
-      - name: Install Bubblewrap and build APK
+      - name: Setup Android SDK
         run: |
-          npm install -g @bubblewrap/cli
-          # Generate TWA (Trusted Web Activity) config and build APK
-          npx bubblewrap init --manifest "https://y7208275-cell.github.io/-fitness-tracker/manifest.json" --directory apk-output || true
-          if [ -d "apk-output" ]; then
-            cd apk-output
-            npx bubblewrap build || true
-            cd ..
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
+          unzip -q tools.zip
+          mv cmdline-tools latest
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Accept licenses and install build tools
+        run: |
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1
+
+      - name: Generate TWA APK
+        run: |
+          git clone https://github.com/GoogleChromeLabs/bubblewrap.git /tmp/bubblewrap
+          cd /tmp/bubblewrap/packages/cli
+          npm install
+          node src/cli.js init \
+            --manifest "https://y7208275-cell.github.io/-fitness-tracker/manifest.json" \
+            --directory /tmp/apk-output || true
+          if [ -d /tmp/apk-output ]; then
+            cd /tmp/apk-output
+            node /tmp/bubblewrap/packages/cli/src/cli.js build || true
+            find /tmp -name "*.apk" -exec cp {} /tmp/app.apk \; 2>/dev/null
           fi
 
-      - name: Try alternative - use PWABuilder API
+      - name: List output
         run: |
-          curl -s -X POST "https://pwabuilder.cloudcomputing.xyz/api/android/package?url=https://y7208275-cell.github.io/-fitness-tracker/" -o app.apk || echo "API failed"
+          find /tmp -name "*.apk" 2>/dev/null | head -5
+          ls -la /tmp/app.apk 2>/dev/null || echo "No APK found"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: fitness-tracker-apk
           path: |
+            /tmp/app.apk
+            /tmp/apk-output/*.apk
             *.apk
-            apk-output/*.apk
-            app.apk
           if-no-files-found: warn
